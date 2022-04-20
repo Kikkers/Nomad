@@ -28,6 +28,7 @@ namespace Utils
 	/// </summary>
 	public static class Messaging
 	{
+		private readonly static ContextLogger log = ContextLogger.Get(typeof(Messaging));
 		public static bool IsInitialized { get; private set; }
 
 		public enum Delay
@@ -41,7 +42,7 @@ namespace Utils
 		{
 			if (IsInitialized)
 			{
-				Debug.LogError("Double Initialize detected");
+				log.Error("Double Initialize detected");
 				return;
 			}
 
@@ -128,6 +129,8 @@ namespace Utils
 
 	internal static class MessagingHelper<TMessageData> where TMessageData : IMessagingData
 	{
+		private static readonly ContextLogger log = ContextLogger.Get(typeof(Messaging));
+
 		// List is used for cheap iteration at the cost of O(n) removal, which should happen less often.
 		internal static readonly List<IHandler<TMessageData>> handlers = new List<IHandler<TMessageData>>();
 
@@ -152,7 +155,7 @@ namespace Utils
 		{
 			if (IsRegistered(handler))
 			{
-				Debug.LogWarning($"[Messaging] Supplied handler {handler} to be added is already registered");
+				log.Warn($"[Messaging] Supplied handler {handler} to be added is already registered");
 				return;
 			}
 
@@ -174,7 +177,7 @@ namespace Utils
 
 			if (!wasRemoved && Application.isPlaying)
 			{
-				Debug.LogWarning($"[Messaging] Supplied handler {handler} to be removed was not registered");
+				log.Warn($"[Messaging] Supplied handler {handler} to be removed was not registered");
 			}
 		}
 

@@ -1,14 +1,23 @@
-﻿using Sirenix.OdinInspector;
-using UnityEngine;
+﻿using UnityEngine;
+using Utils;
 
-public class EquipmentState : MonoBehaviour
+public interface IEquipmentState : ISystem
 {
-	[SerializeField, Required] private EquipmentStateHandle handle;
+	int NumBuildDrones { get; set; }
+}
 
+public class EquipmentState : MonoBehaviour, IEquipmentState
+{
 	public int NumBuildDrones { get; set; } = 400;
+
 
 	private void Awake()
 	{
-		handle.Register(this);
+		Systems.Register<IEquipmentState>(this);
+	}
+
+	private void OnDestroy()
+	{
+		Systems.Unregister<IEquipmentState>(this);
 	}
 }

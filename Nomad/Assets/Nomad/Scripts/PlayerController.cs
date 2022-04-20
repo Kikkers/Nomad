@@ -1,28 +1,29 @@
 using Sirenix.OdinInspector;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Utils;
 
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : MonoBehaviour
 {
-	[SerializeField, Required, AssetsOnly] private InputHandle inputHandle;
-
 	[SerializeField, Required] private Rigidbody body;
 
 	private Vector2 inputMove;
 
 	private void Start()
 	{
-		inputHandle.Player.Move.performed += OnMove;
-		inputHandle.Player.Move.canceled += OnMove;
-		inputHandle.Player.Move.started += OnMove;
+		IInputManager input = Systems.Get<IInputManager>();
+		input.Player.Move.performed += OnMove;
+		input.Player.Move.canceled += OnMove;
+		input.Player.Move.started += OnMove;
 	}
 
 	private void OnDestroy()
 	{
-		inputHandle.Player.Move.performed -= OnMove;
-		inputHandle.Player.Move.canceled -= OnMove;
-		inputHandle.Player.Move.started -= OnMove;
+		IInputManager input = Systems.Get<IInputManager>();
+		input.Player.Move.performed -= OnMove;
+		input.Player.Move.canceled -= OnMove;
+		input.Player.Move.started -= OnMove;
 	}
 
 	private void OnMove(InputAction.CallbackContext obj)
