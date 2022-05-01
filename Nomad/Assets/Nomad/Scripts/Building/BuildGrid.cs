@@ -1,7 +1,4 @@
-using Sirenix.OdinInspector;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using Sirenix.OdinInspector;
 using UnityEngine;
 using Utils;
 
@@ -9,58 +6,213 @@ public class BuildGrid : MonoBehaviour
 {
 	private static readonly ContextLogger log = ContextLogger.Get<BuildGrid>();
 
-	[Required, SerializeField] private BuildGridConfig config;
+	[SerializeField] private BuildGrid joinTarget;
+	[SerializeField, Range(1, 3)] private int rotateAmount;
+	[SerializeField] private int offsetX;
+	[SerializeField] private int offsetY;
 
-	[Required, SerializeField] private BoxCollider boundsCollider;
-	[SerializeField] private int xOffset;
-	[SerializeField] private int yOffset;
-
-	public struct Cell2DData
+	private enum Dir
 	{
-		public int floorData;
-		public int edgeXData;
-		public int edgeYData;
-		public int cornerData;
-
-		public Cell2DData(int floorData, int edgeXData, int edgeYData, int cornerData)
-		{
-			this.floorData = floorData;
-			this.edgeXData = edgeXData;
-			this.edgeYData = edgeYData;
-			this.cornerData = cornerData;
-		}
-
-		public Cell2DData(string serialized)
-		{
-			string[] splitted = serialized.Split(';');
-			floorData = splitted.Length > 0 ? int.Parse(splitted[0]) : 0;
-			edgeXData = splitted.Length > 1 ? int.Parse(splitted[1]) : 0;
-			edgeYData = splitted.Length > 2 ? int.Parse(splitted[2]) : 0;
-			cornerData = splitted.Length > 3 ? int.Parse(splitted[3]) : 0;
-		}
-
-		public override string ToString()
-		{
-			return $"{floorData};{edgeXData};{edgeYData};{cornerData}";
-		}
+		Fwd,
+		Back,
+		Left,
+		Right
 	}
 
-	private static readonly string[] variants = new string[]
+	[Button]
+	private void JoinOtherOntoThis()
 	{
-		"4,4,0;0;0;0,0;0;0;0,0;0;0;0,0;0;0;0,4,0;0;0;0,1;1;1;1,1;1;1;1,0;0;0;0,4,0;0;0;0,0;0;0;0,1;1;1;1,0;0;0;0,4,0;0;0;0,0;0;0;0,0;0;0;0,0;0;0;0,",
-
-	};
-
-	private Cell2DData[][] cells;
-
-	private static Cell2DData[][] MakeCells(int newSizeX, int newSizeY)
-	{
-		Cell2DData[][] newCells = new Cell2DData[newSizeX][];
-		for (int x = 0; x < newSizeX; ++x)
+		if (joinTarget == null)
 		{
-			newCells[x] = new Cell2DData[newSizeY];
+			log.Info("NO");
 		}
-		return newCells;
+
+		// ensure grids line up properly
+		joinTarget.LineUpToOtherTransform(transform);
+
+		// iterate over outer bounds grid positions to determine any size growth and/or origin offset
+		// TODO
+
+		// iterate over all grid cells on the other grid and add them to this grid
+	}
+
+	private void LineUpToOtherTransform(Transform other)
+	{
+		// position
+		Vector3 otherPos = other.localPosition;
+		Vector3 thisPos = other.InverseTransformPoint(transform.position);
+		Vector3 diff = otherPos - thisPos;
+		diff.x = Mathf.Round(diff.x);
+		diff.y = Mathf.Round(diff.y);
+		diff.z = Mathf.Round(diff.z);
+		Vector3 matchedPosition = other.TransformPoint(otherPos - diff);
+
+		// rotation
+		Vector3 otherForward = transform.forward;
+		Dir bestDirection = Dir.Fwd;
+		float bestAngle = -float.MaxValue;
+
+		float dotForward = Vector3.Dot(otherForward, other.forward);
+		if (bestAngle < dotForward)
+		{
+			bestDirection = Dir.Fwd;
+			bestAngle = dotForward;
+		}
+		if (bestAngle < -dotForward)
+		{
+			bestDirection = Dir.Back;
+			bestAngle = -dotForward;
+		}
+
+		float dotRight = Vector3.Dot(otherForward, other.right);
+		if (bestAngle < dotRight)
+		{
+			bestDirection = Dir.Right;
+			bestAngle = dotRight;
+		}
+		if (bestAngle < -dotRight)
+		{
+			bestDirection = Dir.Left;
+			bestAngle = -dotRight;
+		}
+
+		Quaternion matchedRotation = other.rotation;
+		switch (bestDirection)
+		{
+			case Dir.Back:
+				matchedRotation *= Quaternion.AngleAxis(180, Vector3.up);
+				break;
+			case Dir.Left:
+				matchedRotation *= Quaternion.AngleAxis(270, Vector3.up);
+				break;
+			case Dir.Right:
+				matchedRotation *= Quaternion.AngleAxis(90, Vector3.up);
+				break;
+		}
+		transform.SetPositionAndRotation(matchedPosition, matchedRotation);
+	}
+
+	private void Rotate(Quaternion rotation)
+	{
+		int sizeX = cells.Length;
+		int sizeY = cells[0].Length;
+
+		RotateSingleCell(sizeX-1, sizeY-1, rotation, out int rotatedSizeX, out int rotatedSizeY, out _);
+		int offsetX = rotatedSizeX < 0 ? -rotatedSizeX : 0;
+		int offsetY = rotatedSizeY < 0 ? -rotatedSizeY : 0;
+		rotatedSizeX = Mathf.Abs(rotatedSizeX) + 1;
+		rotatedSizeY = Mathf.Abs(rotatedSizeY) + 1;
+
+		Cell2DData[][] newCells = MakeCells(rotatedSizeX, rotatedSizeY);
+		for (int x = 0; x < sizeX; ++x)
+		{
+			for (int y = 0; y < sizeY; ++y)
+			{
+				RotateSingleCell(x, y, rotation, out int rotatedX, out int rotatedY, out Cell2DData data);
+				newCells[rotatedX + offsetX][rotatedY + offsetY] = data;
+			}
+		}
+		cells = newCells;
+	}
+
+	private void RotateOffset(Quaternion rotation, Vector3 translation)
+	{
+		int sizeX = cells.Length;
+		int sizeY = cells[0].Length;
+		Vector3 halfTranslation = translation * 0.5f;
+
+		BoundsInt newBounds = CalcTransformedBounds(halfTranslation, rotation);
+		Vector3Int min = newBounds.min;
+		Vector3Int max = newBounds.max;
+		int newSizeX = max.x - min.x;
+		int newSizeY = max.y - min.y;
+		int offsetX = min.x < 0 ? -min.x : 0;
+		int offsetY = min.y < 0 ? -min.y : 0;
+
+		log.Info($"{sizeX},{sizeY} => {newSizeX},{newSizeY} ({offsetX},{offsetY})");
+
+		Cell2DData[][] newCells = MakeCells(newSizeX, newSizeY);
+		for (int x = 0; x < sizeX; ++x)
+		{
+			for (int y = 0; y < sizeY; ++y)
+			{
+				TransformSingleCell(x, y, halfTranslation, rotation, out int transformedX, out int transformedY, out Cell2DData data);
+
+				log.Info($"{(transformedX)},{(transformedY)} ({offsetX},{offsetY})");
+
+				newCells[transformedX + offsetX][transformedY + offsetY] = data;
+			}
+		}
+		cells = newCells;
+	}
+
+	private BoundsInt CalcTransformedBounds(Vector3 translation, Quaternion rotation)
+	{
+		int sizeX = cells.Length;
+		int sizeY = cells[0].Length;
+
+		Vector3Int min = new Vector3Int(int.MaxValue, int.MaxValue, 0);
+		Vector3Int max = new Vector3Int(int.MinValue, int.MinValue, 0);
+		for(int x = 0; x < sizeX; x += sizeX - 1)
+		{
+			for (int y = 0; y < sizeY; y += sizeY - 1)
+			{
+				TransformSingleCell(x, y, translation, rotation, out int transformedX, out int transformedY, out _);
+				min.x = Mathf.Min(transformedX, min.x);
+				min.y = Mathf.Min(transformedY, min.y);
+				max.x = Mathf.Max(transformedX, max.x);
+				max.y = Mathf.Max(transformedY, max.y);
+			}
+		}
+		BoundsInt bounds = new BoundsInt();
+		bounds.SetMinMax(min, max + Vector3Int.one);
+		return bounds;
+	}
+
+	private BoundsInt MergeBounds(BoundsInt a, BoundsInt b)
+	{
+		return new BoundsInt(
+			Vector3Int.Min(a.min, b.min),
+			Vector3Int.Max(a.max, b.max));
+	}
+
+	private void TransformSingleCell(int x, int y, Vector3 halfTranslation, Quaternion rotation,
+		out int transformedX, out int transformedY, out Cell2DData data)
+	{
+		CoordToData(x, y, out Vector3 localPos, out data);
+		Vector3 rotatedPos = rotation * localPos + halfTranslation;
+		LocalPosToCoord(rotatedPos, out transformedX, out transformedY);
+	}
+
+	private void RotateSingleCell(int x, int y, Quaternion rotation, out int rotatedX, out int rotatedY, out Cell2DData data)
+	{
+		CoordToData(x, y, out Vector3 localPos, out data);
+		Vector3 rotatedPos = rotation * localPos;
+		LocalPosToCoord(rotatedPos, out rotatedX, out rotatedY);
+	}
+
+	[Button]
+	private void RotateAndOffset()
+	{
+		RotateOffset(Quaternion.AngleAxis(90 * rotateAmount, Vector3.up), new Vector3(offsetX, 0, offsetY));
+	}
+
+	[Button]
+	private void Rotate90()
+	{
+		Rotate(Quaternion.AngleAxis(90, Vector3.up));
+	}
+
+	[Button]
+	private void Rotate180()
+	{
+		Rotate(Quaternion.AngleAxis(180, Vector3.up));
+	}
+
+	[Button]
+	private void Rotate270()
+	{
+		Rotate(Quaternion.AngleAxis(270, Vector3.up));
 	}
 
 	private static Cell2DData[][] MakeCopy(Cell2DData[][] cells)
@@ -77,301 +229,101 @@ public class BuildGrid : MonoBehaviour
 		}
 		return newCells;
 	}
-
-	private static Cell2DData[][] MakeRotatedCopy(Cell2DData[][] cells, int rotateAmount)
+	private static Cell2DData[][] MakeCells(int newSizeX, int newSizeY)
 	{
-		rotateAmount %= 4;
-		if (rotateAmount == 0)
+		Cell2DData[][] newCells = new Cell2DData[newSizeX][];
+		for (int x = 0; x < newSizeX; ++x)
 		{
-			return MakeCopy(cells);
-		}
-
-		int sizeX = cells.Length;
-		int sizeY = cells[0].Length;
-		Cell2DData[][] newCells;
-		if (rotateAmount == 2)
-		{
-			int halfSizeX = sizeX / 2;
-			newCells = MakeCopy(cells);
-			for (int x = 0, xOpposite = sizeX - 1; x < halfSizeX; ++x, --xOpposite)
-			{
-				for (int y = 0, yOpposite = sizeY - 1; y < sizeY; ++y, --yOpposite)
-				{
-					Cell2DData tmp = newCells[x][y];
-					newCells[x][y] = newCells[xOpposite][yOpposite];
-					newCells[xOpposite][yOpposite] = tmp;
-				}
-			}
-			return newCells;
-		}
-
-		int newSizeX = sizeY;
-		int newSizeY = sizeX;
-		newCells = MakeCells(newSizeX, newSizeY);
-		if (rotateAmount == 1)
-		{
-			for (int newX = 0, oldY = sizeY - 1; newX < newSizeX; ++newX, --oldY)
-			{
-				for (int newY = 0, oldX = 0; newY < newSizeY; ++newY, ++oldX)
-				{
-					newCells[newX][newY] = cells[oldX][oldY];
-				}
-			}
-		}
-		else if (rotateAmount == 3)
-		{
-			for (int newX = 0, oldY = 0; newX < newSizeX; ++newX, ++oldY)
-			{
-				for (int newY = 0, oldX = sizeX - 1; newY < newSizeY; ++newY, --oldX)
-				{
-					newCells[newX][newY] = cells[oldX][oldY];
-				}
-			}
+			newCells[x] = new Cell2DData[newSizeY];
 		}
 		return newCells;
 	}
 
-	public static void MakeMerged(
-		Cell2DData[][] cells_A, Cell2DData[][] cells_B, int offsetB_X, int offsetB_Y, 
-		out Cell2DData[][] newCells, out int newOriginOffsetX, out int newOriginOffsetY)
+	public struct Cell2DData
 	{
-		int sizeX_A = cells_A.Length;
-		int sizeX_B = cells_B.Length;
-		int newSizeX;
-		int copyOffsetX_B;
-		if (offsetB_X < 0)
+		public int typeId;
+		public int value;
+
+		public Cell2DData(int typeId)
 		{
-			copyOffsetX_B = 0;
-			newOriginOffsetX = -offsetB_X;
-			newSizeX = Mathf.Max(sizeX_A, sizeX_B + offsetB_X) - offsetB_X;
-		}
-		else if (offsetB_X > 0)
-		{
-			copyOffsetX_B = offsetB_X;
-			newOriginOffsetX = 0;
-			newSizeX = Mathf.Max(sizeX_A, sizeX_B + offsetB_X);
-		}
-		else
-		{
-			copyOffsetX_B = 0;
-			newOriginOffsetX = 0;
-			newSizeX = Mathf.Max(sizeX_A, sizeX_B);
-		}
-
-		int sizeY_A = cells_A[0].Length;
-		int sizeY_B = cells_B[0].Length;
-		int newSizeY;
-		int copyOffsetY_B;
-		if (offsetB_Y < 0)
-		{
-			copyOffsetY_B = 0;
-			newOriginOffsetY = -offsetB_Y;
-			newSizeY = Mathf.Max(sizeY_A, sizeY_B + offsetB_Y) - offsetB_Y;
-		}
-		else if (offsetB_Y > 0)
-		{
-			copyOffsetY_B = offsetB_Y;
-			newOriginOffsetY = 0;
-			newSizeY = Mathf.Max(sizeY_A, sizeY_B + offsetB_Y);
-		}
-		else
-		{
-			copyOffsetY_B = 0;
-			newOriginOffsetY = 0;
-			newSizeY = Mathf.Max(sizeY_A, sizeY_B);
-		}
-
-		newCells = MakeCells(newSizeX, newSizeY);
-
-		for (int x = 0; x < sizeX_A; ++x)
-		{
-			for (int y = 0; y < sizeY_A; ++y)
-			{
-				newCells[x + newOriginOffsetX][y + newOriginOffsetY] = cells_A[x][y];
-			}
-		}
-
-		for (int x = 0; x < sizeX_B; ++x)
-		{
-			for (int y = 0; y < sizeY_B; ++y)
-			{
-				newCells[x + copyOffsetX_B][y + copyOffsetY_B] = cells_B[x][y];
-			}
-		}
-
-		cells_A = newCells;
-	}
-
-	private void Merge(Cell2DData[][] otherCells, int otherOffsetX, int otherOffsetY)
-	{
-		MakeMerged(
-			cells, otherCells, otherOffsetX, otherOffsetY,
-			out Cell2DData[][] newCells, out int newOriginOffsetX, out int newOriginOffsetY);
-		cells = newCells;
-		transform.Translate(new Vector3(-newOriginOffsetX, 0, -newOriginOffsetY));
-	}
-
-	[Button]
-	public void Expand()
-	{
-		Merge(cells, xOffset, yOffset);
-	}
-
-	[Button]
-	public void Rotate1()
-	{
-		cells = MakeRotatedCopy(cells, 1);
-	}
-
-	[Button]
-	public void MergeOtherOntoThis()
-	{
-		IReadOnlyList<BuildGrid> grids = Systems.Get<IGridSystem>().ActiveGrids;
-		BuildGrid other = null;
-		foreach (var grid in grids)
-		{
-			if (grid == this)
-				continue;
-			other = grid;
-			break;
-		}
-		if (other == null)
-			return;
-
-		float otherAngle = other.transform.rotation.eulerAngles.y;
-		float thisAngle = transform.rotation.eulerAngles.y;
-		float deltaAngle = thisAngle - otherAngle;
-		if (deltaAngle > 180)
-			deltaAngle -= 360;
-		if (deltaAngle < -180)
-			deltaAngle += 360;
-
-		int rotateAmount;
-		if (deltaAngle > 135 || deltaAngle < -135)
-			rotateAmount = 2;
-		else if (deltaAngle > 45)
-			rotateAmount = 3;
-		else if (deltaAngle < -45)
-			rotateAmount = 1;
-		else
-			rotateAmount = 0;
-
-		float targetAngle = rotateAmount * 90;
-		other.transform.eulerAngles = new Vector3(0, thisAngle + targetAngle, 0);
-	}
-
-	[Button]
-	public void Print()
-	{
-		string str = CellsToString(cells);
-		Cell2DData[][] cells2 = StringToCells(str);
-		string str2 = CellsToString(cells2);
-		Debug.Log("res: " + (str == str2));
-		Debug.Log(str);
-		Debug.Log(str2);
-	}
-
-	private void Awake()
-	{
-		cells = StringToCells(variants[0]);
-	}
-
-	private static Cell2DData[][] StringToCells(string str)
-	{
-		try
-		{
-			string[] parts = str.Split(',');
-			int index = 0;
-			int sizeX = int.Parse(parts[index++]);
-			Cell2DData[][] cells = new Cell2DData[sizeX][];
-			for (int x = 0; x < sizeX; ++x)
-			{
-				int sizeY = int.Parse(parts[index++]);
-				cells[x] = new Cell2DData[sizeY];
-				Cell2DData[] row = cells[x];
-				for (int y = 0; y < sizeY; ++y)
-				{
-					row[y] = new Cell2DData(parts[index++]);
-				}
-			}
-			return cells;
-		}
-		catch(Exception ex)
-		{
-			Debug.LogError("Failed to parse cells: " + ex);
-			return new Cell2DData[0][];
+			this.typeId = typeId;
+			value = 0;
 		}
 	}
 
-	private static string CellsToString(Cell2DData[][] cells)
+	private Cell2DData[][] cells = new Cell2DData[][]
 	{
-		StringBuilder sb = new StringBuilder();
-		sb.Append(cells.Length).Append(',');
-		for(int x = 0; x < cells.Length; ++x)
+		new Cell2DData[]{ new Cell2DData(0), new Cell2DData(0), new Cell2DData(0), new Cell2DData(0), new Cell2DData(0) },
+		new Cell2DData[]{ new Cell2DData(0), new Cell2DData(1), new Cell2DData(1), new Cell2DData(1), new Cell2DData(0) },
+		new Cell2DData[]{ new Cell2DData(0), new Cell2DData(1), new Cell2DData(2), new Cell2DData(3), new Cell2DData(0) },
+		new Cell2DData[]{ new Cell2DData(0), new Cell2DData(1), new Cell2DData(1), new Cell2DData(4), new Cell2DData(0) },
+		new Cell2DData[]{ new Cell2DData(0), new Cell2DData(0), new Cell2DData(0), new Cell2DData(0), new Cell2DData(0) },
+	};
+
+	private void LocalPosToCoord(Vector3 pos, out int x, out int y)
+	{
+		x = Mathf.RoundToInt(pos.x * 2);
+		y = Mathf.RoundToInt(pos.z * 2);
+	}
+
+	private void CoordToData(int x, int y, out Vector3 localPos, out Cell2DData data)
+	{
+		localPos = new Vector3(x * 0.5f, 0, y * 0.5f);
+		data = cells[x][y];
+	}
+
+	private Color IdToColor(int id)
+	{
+		switch (id)
 		{
-			Cell2DData[] row = cells[x];
-			sb.Append(row.Length).Append(',');
-			for (int y = 0; y < row.Length; ++y)
-			{
-				sb.Append(row[y].ToString()).Append(',');
-			}
+			case 1: return Color.red;
+			case 2: return Color.green;
+			case 3: return Color.blue;
+			case 4: return Color.white;
+			default: return Color.black;
 		}
-		return sb.ToString();
 	}
 
 	private void OnDrawGizmos()
 	{
-		if (cells == null)
+		if (cells == null || cells.Length == 0)
 			return;
 
 		Gizmos.matrix = transform.localToWorldMatrix;
 
-		for (int x = 0; x < cells.Length; ++x)
+		// centers
+		int sizeX = cells.Length;
+		int sizeY = cells[0].Length;
+		Vector3 pos;
+		for (int x = 0; x < sizeX; x += 2)
 		{
-			Cell2DData[] row = cells[x];
-			for (int y = 0; y < row.Length; ++y)
+			for (int y = 0; y < sizeY; y += 2)
 			{
-				switch (row[y].floorData)
-				{
-					case 0: Gizmos.color = Color.black; break;
-					default: Gizmos.color = Color.blue; break;
-				}
-				Gizmos.DrawWireCube(new Vector3(0.5f + x, 0, 0.5f + y), new Vector3(0.95f, 0, 0.95f));
+				CoordToData(x, y, out pos, out Cell2DData center);
+				Gizmos.color = IdToColor(center.typeId);
+				Gizmos.DrawWireCube(pos, new Vector3(0.95f, 0, 0.95f));
+			}
+		}
 
-				switch (row[y].edgeXData)
-				{
-					case 0: Gizmos.color = Color.clear; break;
-					default: Gizmos.color = Color.red; break;
-				}
-				Gizmos.DrawWireCube(new Vector3(0.5f + x, 1, y), new Vector3(0.95f, 1, 0));
+		for (int x = 1; x < sizeX; x += 2)
+		{
+			for (int y = 1; y < sizeY; y += 2)
+			{
+				CoordToData(x, y - 1, out pos, out Cell2DData xEdge);
+				Gizmos.color = IdToColor(xEdge.typeId);
+				Gizmos.DrawWireCube(pos, new Vector3(0.05f, 0.25f, 0.25f));
 
-				switch (row[y].edgeYData)
-				{
-					case 0: Gizmos.color = Color.clear; break;
-					default: Gizmos.color = Color.green; break;
-				}
-				Gizmos.DrawWireCube(new Vector3(x, 1, 0.5f + y), new Vector3(0, 1, 0.95f));
+				CoordToData(x - 1, y, out pos, out Cell2DData yEdge);
+				Gizmos.color = IdToColor(yEdge.typeId);
+				Gizmos.DrawWireCube(pos, new Vector3(0.25f, 0.25f, 0.05f));
 
-				switch (row[y].cornerData)
-				{
-					case 0: Gizmos.color = Color.clear; break;
-					default: Gizmos.color = Color.white; break;
-				}
-				Gizmos.DrawWireSphere(new Vector3(x, 0, y), 0.25f);
+				CoordToData(x, y, out pos, out Cell2DData corner);
+				Gizmos.color = IdToColor(corner.typeId);
+				Gizmos.DrawWireCube(pos, new Vector3(0.1f, 1, 0.1f));
 			}
 		}
 
 		Gizmos.matrix = Matrix4x4.identity;
-	}
-
-	private void OnEnable()
-	{
-		Systems.Get<IGridSystem>().Add(this);
-	}
-
-	private void OnDisable()
-	{
-		Systems.Get<IGridSystem>().Remove(this);
 	}
 
 }
