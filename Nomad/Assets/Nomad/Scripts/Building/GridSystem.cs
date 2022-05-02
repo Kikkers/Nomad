@@ -5,25 +5,25 @@ using Utils;
 
 public interface IGridSystem : ISystem
 {
-	IReadOnlyList<BuildGrid> ActiveGrids { get; }
+	IReadOnlyList<SimGrid> ActiveGrids { get; }
 
-	void Add(BuildGrid grid);
-	void Remove(BuildGrid grid);
+	void Add(SimGrid grid);
+	void Remove(SimGrid grid);
 }
 
 public class GridSystem : MonoBehaviour, IGridSystem
 {
 
-	private List<BuildGrid> activeGrids = new List<BuildGrid>();
+	private List<SimGrid> activeGrids = new List<SimGrid>();
 
-	public IReadOnlyList<BuildGrid> ActiveGrids => activeGrids.AsReadOnly();
+	public IReadOnlyList<SimGrid> ActiveGrids => activeGrids.AsReadOnly();
 
-	public void Add(BuildGrid grid)
+	public void Add(SimGrid grid)
 	{
 		activeGrids.Add(grid);
 	}
 
-	public void Remove(BuildGrid grid)
+	public void Remove(SimGrid grid)
 	{
 		activeGrids.Remove(grid);
 	}
