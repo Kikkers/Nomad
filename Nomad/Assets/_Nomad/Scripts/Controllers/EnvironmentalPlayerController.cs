@@ -9,6 +9,7 @@ public class EnvironmentalPlayerController : MonoBehaviour
 	private readonly static ContextLogger log = ContextLogger.Get(typeof(EnvironmentalPlayerController));
 
 	[SerializeField, Required] private Rigidbody body;
+	[SerializeField, Required, InlineEditor] private EnvironmentalPlayerControllerSettings settings;
 
 	private Vector2 inputMove;
 	private float inputMoveVertical;
@@ -40,8 +41,17 @@ public class EnvironmentalPlayerController : MonoBehaviour
 
 	private void FixedUpdate()
 	{
-		Vector3 delta = new(inputMove.x, inputMoveVertical, inputMove.y);
-		log.Info(delta);
-		body.AddForce(delta, ForceMode.VelocityChange);
+		Quaternion currentRotation = body.rotation;
+
+		Vector3 deltaMove = new(inputMove.x, inputMoveVertical, inputMove.y);
+		deltaMove = currentRotation * deltaMove;
+		body.AddForce(deltaMove, ForceMode.VelocityChange);
+
+		Vector3 deltaRotate = new(
+			-inputLook.y * settings.RotateStrength.x, 
+			inputLook.x * settings.RotateStrength.y, 
+			inputLookRoll * settings.RotateStrength.z);
+		deltaRotate = currentRotation * deltaRotate;
+		body.AddTorque(deltaRotate, ForceMode.VelocityChange);
 	}
 }
