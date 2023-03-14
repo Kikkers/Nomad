@@ -28,7 +28,7 @@ namespace Utils
 	/// </summary>
 	public static class Messaging
 	{
-		private readonly static ContextLogger log = ContextLogger.Get(typeof(Messaging));
+		private readonly static Log log = Log.Messaging;
 		public static bool IsInitialized { get; private set; }
 
 		public enum Delay
@@ -129,7 +129,7 @@ namespace Utils
 
 	internal static class MessagingHelper<TMessageData> where TMessageData : IMessagingData
 	{
-		private static readonly ContextLogger log = ContextLogger.Get(typeof(Messaging));
+		private readonly static Log log = Log.Messaging;
 
 		// List is used for cheap iteration at the cost of O(n) removal, which should happen less often.
 		internal static readonly List<IHandler<TMessageData>> handlers = new List<IHandler<TMessageData>>();

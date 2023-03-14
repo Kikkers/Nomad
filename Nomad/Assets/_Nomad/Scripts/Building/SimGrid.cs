@@ -5,7 +5,7 @@ using Utils;
 
 public class SimGrid : MonoBehaviour
 {
-	private static readonly ContextLogger log = ContextLogger.Get<SimGrid>();
+	private static readonly Log log = Log.Grid;
 
 	[SerializeField] private SimGrid joinTarget;
 	[SerializeField, Range(1, 3)] private int rotateAmount;

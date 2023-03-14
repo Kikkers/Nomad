@@ -1,9 +1,8 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Utils;
 
-public interface IGridSystem
+public interface IGridManager
 {
 	IReadOnlyList<SimGrid> ActiveGrids { get; }
 
@@ -11,7 +10,7 @@ public interface IGridSystem
 	void Remove(SimGrid grid);
 }
 
-public class GridSystem : MonoBehaviour, IGridSystem
+public class GridManager : MonoBehaviour, IGridManager
 {
 	private readonly static SingletonTracker instance = new();
 

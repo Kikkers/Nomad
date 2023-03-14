@@ -6,7 +6,7 @@ using Utils;
 [RequireComponent(typeof(Rigidbody))]
 public class EnvironmentalPlayerController : MonoBehaviour
 {
-	private readonly static ContextLogger log = ContextLogger.Get(typeof(EnvironmentalPlayerController));
+	private readonly static Log log = Log.Player;
 
 	[SerializeField, Required] private Rigidbody body;
 	[SerializeField, Required, InlineEditor] private EnvironmentalPlayerControllerSettings settings;
@@ -41,17 +41,18 @@ public class EnvironmentalPlayerController : MonoBehaviour
 
 	private void FixedUpdate()
 	{
+		// apply forces
 		Quaternion currentRotation = body.rotation;
 
-		Vector3 deltaMove = new(inputMove.x, inputMoveVertical, inputMove.y);
+		Vector3 deltaMove = Vector3.Scale(new Vector3(inputMove.x, inputMoveVertical, inputMove.y), settings.MoveStrength);
 		deltaMove = currentRotation * deltaMove;
-		body.AddForce(deltaMove, ForceMode.VelocityChange);
+		body.AddForce(deltaMove * Time.fixedDeltaTime, ForceMode.VelocityChange);
 
 		Vector3 deltaRotate = new(
 			-inputLook.y * settings.RotateStrength.x, 
 			inputLook.x * settings.RotateStrength.y, 
 			inputLookRoll * settings.RotateStrength.z);
 		deltaRotate = currentRotation * deltaRotate;
-		body.AddTorque(deltaRotate, ForceMode.VelocityChange);
+		body.AddTorque(deltaRotate * Time.fixedDeltaTime, ForceMode.VelocityChange);
 	}
 }
