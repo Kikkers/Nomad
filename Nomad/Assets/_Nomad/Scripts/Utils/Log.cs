@@ -8,6 +8,7 @@ namespace Utils
 	public class Log
 	{
 		public readonly static Log Systems = new(nameof(Systems));
+		public readonly static Log Fade = new(nameof(Fade));
 		public readonly static Log Messaging = new(nameof(Messaging));
 		public readonly static Log Grid = new(nameof(Grid));
 		public readonly static Log Player = new(nameof(Player));
